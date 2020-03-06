@@ -35,9 +35,6 @@ Attribute VB_Name = "Mod_TileEngine"
 
 Option Explicit
 
-Public indexList(0 To 5) As Integer
-Public ibQuad As DxVBLibA.Direct3DIndexBuffer8
-Public vbQuadIdx As DxVBLibA.Direct3DVertexBuffer8
 Dim temp_verts(3) As TLVERTEX
 
 Public OffsetCounterX As Single
@@ -60,7 +57,7 @@ Public Const XMinMapSize As Byte = 1
 Public Const YMaxMapSize As Byte = 100
 Public Const YMinMapSize As Byte = 1
 
-Private Const GrhFogata As Integer = 1521
+Private Const GrhFogata As Long = 1521
 
 ''
 'Sets a Grh animation to loop indefinitely.
@@ -126,7 +123,7 @@ End Type
 
 'apunta a una estructura grhdata y mantiene la animacion
 Public Type Grh
-    GrhIndex As Integer
+    GrhIndex As Long
     FrameCounter As Single
     speed As Single
     Started As Byte
@@ -201,7 +198,7 @@ Public Type Char
 End Type
 
 'Info de un objeto
-Public Type Obj
+Public Type obj
     ObjIndex As Integer
     Amount As Integer
 End Type
@@ -215,7 +212,7 @@ Public Type MapBlock
     Damage As DList
     
     NPCIndex As Integer
-    OBJInfo As Obj
+    OBJInfo As obj
     TileExit As WorldPos
     Blocked As Byte
     
@@ -310,6 +307,8 @@ Public mapInfo As mapInfo ' Info acerca del mapa en uso
 Public Normal_RGBList(3) As Long
 Public Color_Shadow(3) As Long
 Public Color_Arbol(3) As Long
+Public Color_Paralisis As Long
+Public Color_Invisibilidad As Long
 
 '   Control de Lluvia
 Public bRain As Boolean
@@ -343,12 +342,12 @@ Private Declare Function QueryPerformanceCounter Lib "kernel32" (lpPerformanceCo
 Public Declare Function SetPixel Lib "gdi32" (ByVal hdc As Long, ByVal X As Long, ByVal Y As Long, ByVal crColor As Long) As Long
 Public Declare Function GetPixel Lib "gdi32" (ByVal hdc As Long, ByVal X As Long, ByVal Y As Long) As Long
 
-Sub ConvertCPtoTP(ByVal viewPortX As Integer, ByVal viewPortY As Integer, ByRef tX As Byte, ByRef tY As Byte)
+Sub ConvertCPtoTP(ByVal viewPortX As Integer, ByVal viewPortY As Integer, ByRef TX As Byte, ByRef TY As Byte)
 '******************************************
 'Converts where the mouse is in the main window to a tile position. MUST be called eveytime the mouse moves.
 '******************************************
-    tX = UserPos.X + viewPortX \ TilePixelWidth - WindowTileWidth \ 2
-    tY = UserPos.Y + viewPortY \ TilePixelHeight - WindowTileHeight \ 2
+    TX = UserPos.X + viewPortX \ TilePixelWidth - WindowTileWidth \ 2
+    TY = UserPos.Y + viewPortY \ TilePixelHeight - WindowTileHeight \ 2
 End Sub
 
 Sub MakeChar(ByVal CharIndex As Integer, ByVal Body As Integer, ByVal Head As Integer, ByVal Heading As Byte, ByVal X As Integer, ByVal Y As Integer, ByVal Arma As Integer, ByVal Escudo As Integer, ByVal Casco As Integer)
@@ -396,10 +395,7 @@ On Error Resume Next
     MapData(X, Y).CharIndex = CharIndex
 End Sub
 
-
-
-
-Public Sub InitGrh(ByRef Grh As Grh, ByVal GrhIndex As Integer, Optional ByVal Started As Byte = 2)
+Public Sub InitGrh(ByRef Grh As Grh, ByVal GrhIndex As Long, Optional ByVal Started As Byte = 2)
 '*****************************************************************
 'Sets up a grh. MUST be done before rendering
 '*****************************************************************
@@ -541,105 +537,6 @@ Sub DoPasosFx(ByVal CharIndex As Integer)
     End If
 End Sub
 
-Sub MoveCharbyPos(ByVal CharIndex As Integer, ByVal nX As Integer, ByVal nY As Integer)
-On Error Resume Next
-    Dim X As Integer
-    Dim Y As Integer
-    Dim addx As Integer
-    Dim addy As Integer
-    Dim nHeading As E_Heading
-    
-    With charlist(CharIndex)
-        X = .Pos.X
-        Y = .Pos.Y
-        
-        MapData(X, Y).CharIndex = 0
-        
-        addx = nX - X
-        addy = nY - Y
-        
-        If Sgn(addx) = 1 Then
-            nHeading = E_Heading.EAST
-        ElseIf Sgn(addx) = -1 Then
-            nHeading = E_Heading.WEST
-        ElseIf Sgn(addy) = -1 Then
-            nHeading = E_Heading.NORTH
-        ElseIf Sgn(addy) = 1 Then
-            nHeading = E_Heading.SOUTH
-        End If
-        
-        MapData(nX, nY).CharIndex = CharIndex
-        
-        .Pos.X = nX
-        .Pos.Y = nY
-        
-        .MoveOffsetX = -1 * (TilePixelWidth * addx)
-        .MoveOffsetY = -1 * (TilePixelHeight * addy)
-        
-        .Moving = 1
-        .Heading = nHeading
-        
-        .scrollDirectionX = Sgn(addx)
-        .scrollDirectionY = Sgn(addy)
-        
-        'parche para que no medite cuando camina
-        If .FxIndex = FxMeditar.CHICO Or .FxIndex = FxMeditar.GRANDE Or .FxIndex = FxMeditar.MEDIANO Or .FxIndex = FxMeditar.XGRANDE Or .FxIndex = FxMeditar.XXGRANDE Then
-            .FxIndex = 0
-        End If
-    End With
-    
-    If Not EstaPCarea(CharIndex) Then Call Dialogos.RemoveDialog(CharIndex)
-    
-    If (nY < MinLimiteY) Or (nY > MaxLimiteY) Or (nX < MinLimiteX) Or (nX > MaxLimiteX) Then
-        Call Char_Erase(CharIndex)
-    End If
-End Sub
-
-Sub MoveScreen(ByVal nHeading As E_Heading)
-'******************************************
-'Starts the screen moving in a direction
-'******************************************
-    Dim X As Integer
-    Dim Y As Integer
-    Dim tX As Integer
-    Dim tY As Integer
-    
-    'Figure out which way to move
-    Select Case nHeading
-        Case E_Heading.NORTH
-            Y = -1
-        
-        Case E_Heading.EAST
-            X = 1
-        
-        Case E_Heading.SOUTH
-            Y = 1
-        
-        Case E_Heading.WEST
-            X = -1
-    End Select
-    
-    'Fill temp pos
-    tX = UserPos.X + X
-    tY = UserPos.Y + Y
-    
-    'Check to see if its out of bounds
-    If tX < MinXBorder Or tX > MaxXBorder Or tY < MinYBorder Or tY > MaxYBorder Then
-        Exit Sub
-    Else
-        'Start moving... MainLoop does the rest
-        AddtoUserPos.X = X
-        UserPos.X = tX
-        AddtoUserPos.Y = Y
-        UserPos.Y = tY
-        UserMoving = 1
-        
-        bTecho = IIf(MapData(UserPos.X, UserPos.Y).Trigger = 1 Or _
-                MapData(UserPos.X, UserPos.Y).Trigger = 2 Or _
-                MapData(UserPos.X, UserPos.Y).Trigger = 4, True, False)
-    End If
-End Sub
-
 Private Function HayFogata(ByRef Location As Position) As Boolean
     Dim J As Long
     Dim k As Long
@@ -663,191 +560,16 @@ Function NextOpenChar() As Integer
 '*****************************************************************
 'Finds next open char slot in CharList
 '*****************************************************************
-    Dim loopc As Long
+    Dim LoopC As Long
     Dim Dale As Boolean
     
-    loopc = 1
-    Do While charlist(loopc).active And Dale
-        loopc = loopc + 1
-        Dale = (loopc <= UBound(charlist))
+    LoopC = 1
+    Do While charlist(LoopC).active And Dale
+        LoopC = LoopC + 1
+        Dale = (LoopC <= UBound(charlist))
     Loop
     
-    NextOpenChar = loopc
-End Function
-
-''
-' Loads grh data using the new file format.
-'
-' @return   True if the load was successfull, False otherwise.
-
-Public Function LoadGrhData() As Boolean
-On Error Resume Next
-    Dim Grh As Long
-    Dim Frame As Long
-    Dim grhCount As Long
-    Dim handle As Integer
-    Dim fileVersion As Long
-    'Open files
-    handle = FreeFile()
-    Open IniPath & "Graficos.ind" For Binary Access Read As handle
-    Get handle, , fileVersion
-    
-    Get handle, , grhCount
-    
-    ReDim GrhData(0 To grhCount) As GrhData
-    
-    While Not EOF(handle)
-        Get handle, , Grh
-        
-        With GrhData(Grh)
-           ' GrhData(Grh).active = True
-            Get handle, , .NumFrames
-            If .NumFrames <= 0 Then Resume Next
-            
-            ReDim .Frames(1 To GrhData(Grh).NumFrames)
-            
-            If .NumFrames > 1 Then
-                For Frame = 1 To .NumFrames
-                    Get handle, , .Frames(Frame)
-                    If .Frames(Frame) <= 0 Or .Frames(Frame) > grhCount Then
-                        Resume Next
-                    End If
-                Next Frame
-                
-                Get handle, , .speed
-                
-                If .speed <= 0 Then Resume Next
-                
-                .pixelHeight = GrhData(.Frames(1)).pixelHeight
-                If .pixelHeight <= 0 Then Resume Next
-                
-                .pixelWidth = GrhData(.Frames(1)).pixelWidth
-                If .pixelWidth <= 0 Then Resume Next
-                
-                .TileWidth = GrhData(.Frames(1)).TileWidth
-                If .TileWidth <= 0 Then Resume Next
-                
-                .TileHeight = GrhData(.Frames(1)).TileHeight
-                If .TileHeight <= 0 Then Resume Next
-            Else
-                Get handle, , .FileNum
-                If .FileNum <= 0 Then Resume Next
-                
-                Get handle, , GrhData(Grh).sX
-                If .sX < 0 Then Resume Next
-                
-                Get handle, , .sY
-                If .sY < 0 Then Resume Next
-                
-                Get handle, , .pixelWidth
-                If .pixelWidth <= 0 Then Resume Next
-                
-                Get handle, , .pixelHeight
-                If .pixelHeight <= 0 Then Resume Next
-                
-                .TileWidth = .pixelWidth / TilePixelHeight
-                .TileHeight = .pixelHeight / TilePixelWidth
-                
-                .Frames(1) = Grh
-            End If
-        End With
-    Wend
-    
-    Close handle
-
-    
-    LoadGrhData = True
-Exit Function
-
-ErrorHandler:
-    LoadGrhData = False
-End Function
-
-
-Function LegalPos(ByVal X As Integer, ByVal Y As Integer) As Boolean
-'*****************************************************************
-'Checks to see if a tile position is legal
-'*****************************************************************
-    'Limites del mapa
-    If X < MinXBorder Or X > MaxXBorder Or Y < MinYBorder Or Y > MaxYBorder Then
-        Exit Function
-    End If
-    
-    'Tile Bloqueado?
-    If MapData(X, Y).Blocked = 1 Then
-        Exit Function
-    End If
-    
-    'Hay un personaje?
-    If MapData(X, Y).CharIndex > 0 Then
-        Exit Function
-    End If
-   
-    If UserNavegando <> HayAgua(X, Y) Then
-        Exit Function
-    End If
-    
-    If UserEvento Then
-        Exit Function
-    End If
-    
-    LegalPos = True
-End Function
-
-Function MoveToLegalPos(ByVal X As Integer, ByVal Y As Integer) As Boolean
-'*****************************************************************
-'Author: ZaMa
-'Last Modify Date: 01/08/2009
-'Checks to see if a tile position is legal, including if there is a casper in the tile
-'10/05/2009: ZaMa - Now you can't change position with a casper which is in the shore.
-'01/08/2009: ZaMa - Now invisible admins can't change position with caspers.
-'*****************************************************************
-    Dim CharIndex As Integer
-    
-    'Limites del mapa
-    If X < MinXBorder Or X > MaxXBorder Or Y < MinYBorder Or Y > MaxYBorder Then
-        Exit Function
-    End If
-    
-    'Tile Bloqueado?
-    If MapData(X, Y).Blocked = 1 Then
-        Exit Function
-    End If
-    
-    CharIndex = MapData(X, Y).CharIndex
-    'Hay un personaje?
-    If CharIndex > 0 Then
-    
-        If MapData(UserPos.X, UserPos.Y).Blocked = 1 Then
-            Exit Function
-        End If
-        
-        With charlist(CharIndex)
-            ' Si no es casper, no puede pasar
-            If .iHead <> eCabezas.CASPER_HEAD And .iBody <> eCabezas.FRAGATA_FANTASMAL Then
-                Exit Function
-            Else
-                ' No puedo intercambiar con un casper que este en la orilla (Lado tierra)
-                If HayAgua(UserPos.X, UserPos.Y) Then
-                    If Not HayAgua(X, Y) Then Exit Function
-                Else
-                    ' No puedo intercambiar con un casper que este en la orilla (Lado agua)
-                    If HayAgua(X, Y) Then Exit Function
-                End If
-                
-                ' Los admins no pueden intercambiar pos con caspers cuando estan invisibles
-                If charlist(UserCharIndex).priv > 0 And charlist(UserCharIndex).priv < 6 Then
-                    If charlist(UserCharIndex).invisible = True Then Exit Function
-                End If
-            End If
-        End With
-    End If
-   
-    If UserNavegando <> HayAgua(X, Y) Then
-        Exit Function
-    End If
-    
-    MoveToLegalPos = True
+    NextOpenChar = LoopC
 End Function
 
 Function InMapBounds(ByVal X As Integer, ByVal Y As Integer) As Boolean
@@ -879,7 +601,7 @@ Function GetBitmapDimensions(ByVal BmpFile As String, ByRef bmWidth As Long, ByR
     bmHeight = BINFOHeader.biHeight
 End Function
 
-Public Sub DrawTransparentGrhtoHdc(ByVal dsthdc As Long, ByVal srchdc As Long, ByRef SourceRect As RECT, ByRef destRect As RECT, ByVal TransparentColor As Long)
+Public Sub DrawTransparentGrhtoHdc(ByVal dsthdc As Long, ByVal srchdc As Long, ByRef SourceRect As RECT, ByRef DestRect As RECT, ByVal TransparentColor As Long)
 '**************************************************************
 'Author: Torres Patricio (Pato)
 'Last Modify Date: 27/07/2012 - ^[GS]^
@@ -893,7 +615,7 @@ Public Sub DrawTransparentGrhtoHdc(ByVal dsthdc As Long, ByVal srchdc As Long, B
             Color = GetPixel(srchdc, X, Y)
             
             If Color <> TransparentColor Then
-                Call SetPixel(dsthdc, destRect.Left + (X - SourceRect.Left), destRect.Top + (Y - SourceRect.Top), Color)
+                Call SetPixel(dsthdc, DestRect.Left + (X - SourceRect.Left), DestRect.Top + (Y - SourceRect.Top), Color)
             End If
         Next Y
     Next X
@@ -920,6 +642,9 @@ Sub RenderScreen(ByVal tilex As Integer, _
     'Last modified by: Juan Martin Sotuyo Dodero (Maraxus)
     'Renders everything to the viewport
     '**************************************************************
+    
+    On Error GoTo RenderScreen_Err
+    
     Dim Y                As Long     'Keeps track of where on map we are
     Dim X                As Long     'Keeps track of where on map we are
     
@@ -994,7 +719,7 @@ Sub RenderScreen(ByVal tilex As Integer, _
     ParticleOffsetX = (Engine_PixelPosX(screenminX) - PixelOffsetX)
     ParticleOffsetY = (Engine_PixelPosY(screenminY) - PixelOffsetY)
 
-'Draw floor layer
+    'Draw floor layer
     For Y = screenminY To screenmaxY
         For X = screenminX To screenmaxX
             
@@ -1036,43 +761,53 @@ Sub RenderScreen(ByVal tilex As Integer, _
                 PixelOffsetYTemp = ScreenY * TilePixelHeight + PixelOffsetY
                 
                 With MapData(X, Y)
+                
                     'Object Layer **********************************
                     If .ObjGrh.GrhIndex <> 0 Then
                         Call Draw_Grh(.ObjGrh, PixelOffsetXTemp, PixelOffsetYTemp, 1, .Engine_Light(), 1)
                     End If
                     '***********************************************
-        
-        
+
                     'Char layer********************************
                     If .CharIndex <> 0 Then
                         Call CharRender(.CharIndex, PixelOffsetXTemp, PixelOffsetYTemp)
                     End If
                     '*************************************************
-        
-                    
-                    
+
                     'Layer 3 *****************************************
                     If .Graphic(3).GrhIndex <> 0 Then
+                    
                         If .Graphic(3).GrhIndex = 735 Or .Graphic(3).GrhIndex >= 6994 And .Graphic(3).GrhIndex <= 7002 Then
+                            
+                            ' Transparencia de Arboles
                             If Abs(UserPos.X - X) < 3 And (Abs(UserPos.Y - Y)) < 8 And (Abs(UserPos.Y) < Y) Then
                                 Call Draw_Grh(.Graphic(3), PixelOffsetXTemp, PixelOffsetYTemp, 1, Color_Arbol(), 1)
                             Else 'NORMAL
                                 Call Draw_Grh(.Graphic(3), PixelOffsetXTemp, PixelOffsetYTemp, 1, .Engine_Light(), 1)
                             End If
+                            
                         Else 'NORMAL
+                        
                             Call Draw_Grh(.Graphic(3), PixelOffsetXTemp, PixelOffsetYTemp, 1, .Engine_Light(), 1)
+                            
                         End If
+                        
                     End If
                     '************************************************
                     
                     'Dibujamos los danos.
-                    If .Damage.Activated Then _
+                    If .Damage.Activated Then
                         Call mDx8_Dibujado.Damage_Draw(X, Y, PixelOffsetXTemp, PixelOffsetYTemp - 20)
-                
+                    End If
+                    
                     'Particulas
                     If .Particle_Group_Index Then
-                        If Abs(UserPos.X - X) < Engine_Get_TileBuffer + 3 And (Abs(UserPos.Y - Y)) < Engine_Get_TileBuffer + 3 Then _
-                            Call Particle_Group_Render(.Particle_Group_Index, PixelOffsetXTemp + 16, PixelOffsetYTemp + 16)
+                    
+                        'Solo las renderizamos si estan cerca del area de vision.
+                        If Abs(UserPos.X - X) < Engine_Get_TileBuffer + 3 And (Abs(UserPos.Y - Y)) < Engine_Get_TileBuffer + 3 Then
+                            Call mDx8_Particulas.Particle_Group_Render(.Particle_Group_Index, PixelOffsetXTemp + 16, PixelOffsetYTemp + 16)
+                        End If
+                        
                     End If
 
                     If Not .FxIndex = 0 Then
@@ -1095,27 +830,42 @@ Sub RenderScreen(ByVal tilex As Integer, _
     ScreenY = minYOffset - Engine_Get_TileBuffer
 
     For Y = minY To maxY
+
         ScreenX = minXOffset - Engine_Get_TileBuffer
 
         For X = minX To maxX
-   
+            
+            PixelOffsetXTemp = ScreenX * TilePixelWidth + PixelOffsetX
+            PixelOffsetYTemp = ScreenY * TilePixelHeight + PixelOffsetY
+            
             'Layer 4
             If MapData(X, Y).Graphic(4).GrhIndex Then
+            
                 If bTecho Then
-                    Call Draw_Grh(MapData(X, Y).Graphic(4), ScreenX * TilePixelWidth + PixelOffsetX, ScreenY * TilePixelHeight + PixelOffsetY, 1, temp_rgb(), 1)
+                    Call Draw_Grh(MapData(X, Y).Graphic(4), PixelOffsetXTemp, PixelOffsetYTemp, 1, temp_rgb(), 1)
                 Else
+                
                     If ColorTecho = 250 Then
-                        Call Draw_Grh(MapData(X, Y).Graphic(4), ScreenX * TilePixelWidth + PixelOffsetX, ScreenY * TilePixelHeight + PixelOffsetY, 1, MapData(X, Y).Engine_Light(), 1)
+                        Call Draw_Grh(MapData(X, Y).Graphic(4), PixelOffsetXTemp, PixelOffsetYTemp, 1, MapData(X, Y).Engine_Light(), 1)
                     Else
-                        Call Draw_Grh(MapData(X, Y).Graphic(4), ScreenX * TilePixelWidth + PixelOffsetX, ScreenY * TilePixelHeight + PixelOffsetY, 1, temp_rgb(), 1)
+                        Call Draw_Grh(MapData(X, Y).Graphic(4), PixelOffsetXTemp, PixelOffsetYTemp, 1, temp_rgb(), 1)
                     End If
+                    
                 End If
+                
             End If
+            
             ScreenX = ScreenX + 1
+            
         Next X
 
         ScreenY = ScreenY + 1
     Next Y
+
+    If ClientSetup.ParticleEngine Then
+        'Weather Update & Render - Aca se renderiza la lluvia, nieve, etc.
+        Call mDx8_Particulas.Engine_Weather_Update
+    End If
 
     If ClientSetup.ProyectileEngine Then
                             
@@ -1128,7 +878,7 @@ Sub RenderScreen(ByVal tilex As Integer, _
                     Dim angle As Single
                     
                     'Update the position
-                    angle = DegreeToRadian * Engine_GetAngle(ProjectileList(J).X, ProjectileList(J).Y, ProjectileList(J).tX, ProjectileList(J).tY)
+                    angle = DegreeToRadian * Engine_GetAngle(ProjectileList(J).X, ProjectileList(J).Y, ProjectileList(J).TX, ProjectileList(J).TY)
                     ProjectileList(J).X = ProjectileList(J).X + (Sin(angle) * ElapsedTime * 0.63)
                     ProjectileList(J).Y = ProjectileList(J).Y - (Cos(angle) * ElapsedTime * 0.63)
                     
@@ -1166,8 +916,8 @@ Sub RenderScreen(ByVal tilex As Integer, _
             For J = 1 To LastProjectile
 
                 If ProjectileList(J).Grh.GrhIndex Then
-                    If Abs(ProjectileList(J).X - ProjectileList(J).tX) < 20 Then
-                        If Abs(ProjectileList(J).Y - ProjectileList(J).tY) < 20 Then
+                    If Abs(ProjectileList(J).X - ProjectileList(J).TX) < 20 Then
+                        If Abs(ProjectileList(J).Y - ProjectileList(J).TY) < 20 Then
                             Call Engine_Projectile_Erase(J)
                         End If
                     End If
@@ -1176,8 +926,10 @@ Sub RenderScreen(ByVal tilex As Integer, _
             
         End If
     End If
-    If colorRender <> 240 Then _
-    Call DrawText(272, 50, renderText, render_msg(0), True, 2)
+    
+    If colorRender <> 240 Then
+        Call DrawText(272, 50, renderText, render_msg(0), True, 2)
+    End If
     
     '   Set Offsets
     LastOffsetX = ParticleOffsetX
@@ -1186,6 +938,13 @@ Sub RenderScreen(ByVal tilex As Integer, _
     If ClientSetup.PartyMembers Then Call Draw_Party_Members
 
     Call RenderCount
+
+RenderScreen_Err:
+
+    If Err.number Then
+        Call LogError(Err.number, Err.Description, "Mod_TileEngine.RenderScreen")
+    End If
+    
 End Sub
 
 Public Function RenderSounds()
@@ -1194,41 +953,45 @@ Public Function RenderSounds()
 'Last Modify Date: 3/30/2008
 'Actualiza todos los sonidos del mapa.
 '**************************************************************
-Dim Location As Position
+    Dim Location As Position
 
-        If bRain And bLluvia(UserMap) Then
-                If bTecho Then
-                    If frmMain.IsPlaying <> PlayLoop.plLluviain Then
-                        If RainBufferIndex Then _
-                            Call Audio.StopWave(RainBufferIndex)
-                        RainBufferIndex = Audio.PlayWave("lluviain.wav", 0, 0, LoopStyle.Enabled)
-                        frmMain.IsPlaying = PlayLoop.plLluviain
+    If bRain And bLluvia(UserMap) Then
+            If bTecho Then
+                If frmMain.IsPlaying <> PlayLoop.plLluviain Then
+                    If RainBufferIndex Then
+                        Call Audio.StopWave(RainBufferIndex)
                     End If
-                Else
-                    If frmMain.IsPlaying <> PlayLoop.plLluviaout Then
-                        If RainBufferIndex Then _
-                            Call Audio.StopWave(RainBufferIndex)
-                        RainBufferIndex = Audio.PlayWave("lluviaout.wav", 0, 0, LoopStyle.Enabled)
-                        frmMain.IsPlaying = PlayLoop.plLluviaout
-                    End If
+
+                    RainBufferIndex = Audio.PlayWave("lluviain.wav", 0, 0, LoopStyle.Enabled)
+                    frmMain.IsPlaying = PlayLoop.plLluviain
                 End If
+            Else
+                If frmMain.IsPlaying <> PlayLoop.plLluviaout Then
+                    If RainBufferIndex Then
+                        Call Audio.StopWave(RainBufferIndex)
+                    End If
+
+                    RainBufferIndex = Audio.PlayWave("lluviaout.wav", 0, 0, LoopStyle.Enabled)
+                    frmMain.IsPlaying = PlayLoop.plLluviaout
+                End If
+            End If
+    End If
+
+    If bFogata Then
+        bFogata = Map_CheckBonfire(Location)
+
+        If Not bFogata Then
+            Call Audio.StopWave(FogataBufferIndex)
+            FogataBufferIndex = 0
         End If
 
-        If bFogata Then
-                bFogata = Map_CheckBonfire(Location)
+    Else
+        bFogata = Map_CheckBonfire(Location)
 
-                If Not bFogata Then
-                        Call Audio.StopWave(FogataBufferIndex)
-                        FogataBufferIndex = 0
-                End If
-
-        Else
-                bFogata = Map_CheckBonfire(Location)
-
-                If bFogata And FogataBufferIndex = 0 Then
-                        FogataBufferIndex = Audio.PlayWave("fuego.wav", Location.X, Location.Y, LoopStyle.Enabled)
-                End If
+        If bFogata And FogataBufferIndex = 0 Then
+            FogataBufferIndex = Audio.PlayWave("fuego.wav", Location.X, Location.Y, LoopStyle.Enabled)
         End If
+    End If
 End Function
 
 Function HayUserAbajo(ByVal X As Integer, ByVal Y As Integer, ByVal GrhIndex As Long) As Boolean
@@ -1283,17 +1046,9 @@ On Error GoTo 0
     Call CargarFxs
     Call LoadGraphics
     Call CargarParticulas
-    
-    indexList(0) = 0: indexList(1) = 1: indexList(2) = 2
-    indexList(3) = 3: indexList(4) = 4: indexList(5) = 5
-    
-    Set ibQuad = DirectDevice.CreateIndexBuffer(Len(indexList(0)) * 4, 0, D3DFMT_INDEX16, D3DPOOL_MANAGED)
-    
-    Call D3DIndexBuffer8SetData(ibQuad, 0, Len(indexList(0)) * 4, 0, indexList(0))
-    
-    Set vbQuadIdx = DirectDevice.CreateVertexBuffer(Len(temp_verts(0)) * 4, 0, D3DFVF_XYZ Or D3DFVF_DIFFUSE Or D3DFVF_SPECULAR Or D3DFVF_TEX1, D3DPOOL_MANAGED)
-    
+
     InitTileEngine = True
+    
 End Function
 
 Public Sub LoadGraphics()
@@ -1346,16 +1101,24 @@ Sub ShowNextFrame(ByVal DisplayFormTop As Integer, _
         
         '****** Update screen ******
         If UserCiego Then
-            DirectDevice.Clear 0, ByVal 0, D3DCLEAR_TARGET, 0, 1#, 0
+            Call DirectDevice.Clear(0, ByVal 0, D3DCLEAR_TARGET, 0, 1#, 0)
         Else
             Call RenderScreen(UserPos.X - AddtoUserPos.X, UserPos.Y - AddtoUserPos.Y, OffsetCounterX, OffsetCounterY)
-
         End If
-        
-        Call Dialogos.Render
-        Call DibujarCartel
 
-        If ClientSetup.bGuildNews Then Call DialogosClanes.Draw
+        If Dialogos.NeedRender Then Call Dialogos.Render ' GSZAO
+        Call DibujarCartel
+        If DialogosClanes.Activo Then Call DialogosClanes.Draw ' GSZAO
+
+        '*********Tiempo restante para que termine el invi o el paralizar*********
+        If UserParalizado And UserParalizadoSegundosRestantes <> 0 Then
+            Call DrawText(1, 25, UserParalizadoSegundosRestantes & " segundos restantes de Paralisis", Color_Paralisis)
+        End If
+
+        If UserInvisible And UserInvisibleSegundosRestantes <> 0 Then
+            Call DrawText(1, 13, UserInvisibleSegundosRestantes & " segundos restantes de Invisibilidad", Color_Invisibilidad)
+        End If
+        '*************************************************************************
 
         ' Calculamos los FPS y los mostramos
         Call Engine_Update_FPS
@@ -1365,53 +1128,9 @@ Sub ShowNextFrame(ByVal DisplayFormTop As Integer, _
         timerTicksPerFrame = timerElapsedTime * Engine_Get_BaseSpeed
         
         Call Engine_EndScene(MainScreenRect, 0)
-        
-        '//Banco
-        If frmBancoObj.Visible Then
-            If frmBancoObj.PicBancoInv.Visible Then Call InvBanco(0).DrawInv
-            If frmBancoObj.PicInv.Visible Then Call InvBanco(1).DrawInv
-        End If
     
-        '//Comercio
-        If frmComerciar.Visible Then
-            If frmComerciar.picInvNpc.Visible Then Call InvComNpc.DrawInv
-            If frmComerciar.picInvUser.Visible Then Call InvComUsu.DrawInv
-        End If
+        Call Inventario.DrawDragAndDrop
     
-        '//Comercio entre usuarios
-        If frmComerciarUsu.Visible Then
-            If frmComerciarUsu.picInvComercio.Visible Then InvComUsu.DrawInv (1)
-            If frmComerciarUsu.picInvOfertaProp.Visible Then InvOfferComUsu(0).DrawInv (1)
-            If frmComerciarUsu.picInvOfertaOtro Then InvOfferComUsu(1).DrawInv (1)
-            If frmComerciarUsu.picInvOroProp.Visible Then InvOroComUsu(0).DrawInv (1)
-            If frmComerciarUsu.picInvOroOfertaProp.Visible Then InvOroComUsu(1).DrawInv (1)
-            If frmComerciarUsu.picInvOroOfertaOtro.Visible Then InvOroComUsu(2).DrawInv (1)
-        End If
-    
-        '//Herrero
-        If frmHerrero.Visible Then
-            If frmHerrero.picLingotes0.Visible Or frmHerrero.picMejorar0.Visible Then InvLingosHerreria(1).DrawInv (1)
-            If frmHerrero.picLingotes1.Visible Or frmHerrero.picMejorar1.Visible Then InvLingosHerreria(2).DrawInv (1)
-            If frmHerrero.picLingotes2.Visible Or frmHerrero.picMejorar2.Visible Then InvLingosHerreria(3).DrawInv (1)
-            If frmHerrero.picLingotes3.Visible Or frmHerrero.picMejorar3.Visible Then InvLingosHerreria(4).DrawInv (1)
-        End If
-    
-        '//Carpintero
-        If frmCarp.Visible Then
-            If frmCarp.picMaderas0.Visible Or frmCarp.imgMejorar0.Visible Then InvMaderasCarpinteria(1).DrawInv (1)
-            If frmCarp.picMaderas1.Visible Or frmCarp.imgMejorar1.Visible Then InvMaderasCarpinteria(2).DrawInv (1)
-            If frmCarp.picMaderas2.Visible Or frmCarp.imgMejorar2.Visible Then InvMaderasCarpinteria(3).DrawInv (1)
-            If frmCarp.picMaderas3.Visible Or frmCarp.imgMejorar3.Visible Then InvMaderasCarpinteria(4).DrawInv (1)
-        End If
-    
-        '//Inventario
-        If frmMain.Visible Then
-            If frmMain.PicInv.Visible Then
-                Call Inventario.DrawInv
-            End If
-        End If
-        
-
     End If
   
 End Sub
@@ -1590,7 +1309,7 @@ Private Sub CharRender(ByVal CharIndex As Long, _
             End If
 
         End If
-        
+                
         If Not .invisible Then
             Movement_Speed = 0.5
             
@@ -1598,7 +1317,12 @@ Private Sub CharRender(ByVal CharIndex As Long, _
             If .Body.Walk(.Heading).GrhIndex Then
                 Call Draw_Grh(.Body.Walk(.Heading), PixelOffsetX, PixelOffsetY, 1, ColorFinal(), 1)
             End If
-            
+                
+            'Reflejo Body
+            If HayAgua(charlist(UserCharIndex).Pos.X, charlist(UserCharIndex).Pos.Y + 1) = True Then
+                Call Draw_Grh(.Body.Walk(.Heading), PixelOffsetX, PixelOffsetY + 34, 1, ColorFinal(), 1, 1, 360)
+            End If
+                
             'Draw name when navigating
             If Len(.Nombre) > 0 Then
                 If Nombres Then
@@ -1612,6 +1336,11 @@ Private Sub CharRender(ByVal CharIndex As Long, _
             If .Head.Head(.Heading).GrhIndex Then
                 Call Draw_Grh(.Head.Head(.Heading), PixelOffsetX + .Body.HeadOffset.X, PixelOffsetY + .Body.HeadOffset.Y, 1, ColorFinal(), 0)
                 
+            'Reflejo Head
+            If HayAgua(charlist(UserCharIndex).Pos.X, charlist(UserCharIndex).Pos.Y + 1) = True Then
+                Call Draw_Grh(.Head.Head(.Heading), PixelOffsetX + .Body.HeadOffset.X, PixelOffsetY + .Body.HeadOffset.Y + 44, 1, ColorFinal(), 0, 1, 360 \ 2)
+            End If
+            
                 'Draw Helmet
                 If .Casco.Head(.Heading).GrhIndex Then
                     Call Draw_Grh(.Casco.Head(.Heading), PixelOffsetX + .Body.HeadOffset.X, PixelOffsetY + .Body.HeadOffset.Y + OFFSET_HEAD, 1, ColorFinal(), 0)
@@ -1641,7 +1370,7 @@ Private Sub CharRender(ByVal CharIndex As Long, _
                     For i = 1 To .Particle_Count
                     
                         If .Particle_Group(i) > 0 Then
-                            Call Particle_Group_Render(.Particle_Group(i), PixelOffsetX + .Body.HeadOffset.X, PixelOffsetY)
+                            Call mDx8_Particulas.Particle_Group_Render(.Particle_Group(i), PixelOffsetX + .Body.HeadOffset.X, PixelOffsetY)
                         End If
                         
                     Next i
@@ -1779,10 +1508,12 @@ Public Sub Device_Textured_Render(ByVal X As Single, ByVal Y As Single, _
 
                 Call .SetTexture(Texture)
                     
+                Call .SetAlpha(Alpha)
+                
                 If TextureWidth <> 0 And TextureHeight <> 0 Then
-                    Call .Draw(X, Y, Width, Height, Color, sX / TextureWidth, sY / TextureHeight, (sX + Width) / TextureWidth, (sY + Height) / TextureHeight, Alpha, angle)
+                    Call .Draw(X, Y, Width, Height, Color, sX / TextureWidth, sY / TextureHeight, (sX + Width) / TextureWidth, (sY + Height) / TextureHeight, angle)
                 Else
-                    Call .Draw(X, Y, TextureWidth, TextureHeight, Color, , , , , Alpha, angle)
+                    Call .Draw(X, Y, TextureWidth, TextureHeight, Color, , , , , angle)
                 End If
                 
         End With
@@ -1807,14 +1538,14 @@ Public Sub RenderItem(ByVal hWndDest As Long, ByVal GrhIndex As Long)
     
 End Sub
 
-Sub Draw_GrhIndex(ByVal GrhIndex As Integer, ByVal X As Integer, ByVal Y As Integer, ByVal Center As Byte, ByRef Color_List() As Long, Optional ByVal angle As Single = 0, Optional ByVal Alpha As Boolean = False)
+Sub Draw_GrhIndex(ByVal GrhIndex As Long, ByVal X As Integer, ByVal Y As Integer, ByVal Center As Byte, ByRef Color_List() As Long, Optional ByVal angle As Single = 0, Optional ByVal Alpha As Boolean = False)
     Dim SourceRect As RECT
     
     With GrhData(GrhIndex)
         'Center Grh over X,Y pos
         If Center Then
             If .TileWidth <> 1 Then
-                X = X - Int(.TileWidth * TilePixelWidth / 2) + TilePixelWidth \ 2
+                X = X - (.pixelWidth - TilePixelWidth) \ 2
             End If
             
             If .TileHeight <> 1 Then
@@ -1832,7 +1563,7 @@ Sub Draw_Grh(ByRef Grh As Grh, ByVal X As Integer, ByVal Y As Integer, ByVal Cen
 '*****************************************************************
 'Draws a GRH transparently to a X and Y position
 '*****************************************************************
-    Dim CurrentGrhIndex As Integer
+    Dim CurrentGrhIndex As Long
     
     If Grh.GrhIndex = 0 Then Exit Sub
     
@@ -1863,7 +1594,7 @@ On Error GoTo Error
         'Center Grh over X,Y pos
         If Center Then
             If .TileWidth <> 1 Then
-                X = X - Int(.TileWidth * TilePixelWidth / 2) + TilePixelWidth \ 2
+                X = X - (.pixelWidth - TilePixelWidth) \ 2
             End If
             
             If .TileHeight <> 1 Then
